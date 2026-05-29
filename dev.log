@@ -1,0 +1,12 @@
+
+> pulsedesk@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.159.21.236:3000
+- Environments: .env
+✓ Ready in 304ms
+
+ GET /login?callbackUrl=http%3A%2F%2Flocalhost%3A3000%2Fdashboard&error=OAuthAccountNotLinked 200 in 556ms (next.js: 101ms, proxy.ts: 152ms, application-code: 303ms)
+[?25h

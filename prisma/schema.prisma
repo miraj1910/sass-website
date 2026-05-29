@@ -1,0 +1,448 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role      @default(MEMBER)
+  createdAt     DateTime  @default(now())
+  teamId        String?
+  team          Team?     @relation(fields: [teamId], references: [id])
+  accounts      Account[]
+  sessions      Session[]
+  ownedTeam     Team?     @relation("TeamOwner")
+  apiKeys       ApiKey[]
+  seats         Seat[]
+}
+
+model Team {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique
+  createdAt  DateTime @default(now())
+  ownerId    String   @unique
+  owner      User     @relation("TeamOwner", fields: [ownerId], references: [id])
+  members    User[]
+  metrics    Metric[]
+  customer   Customer?
+  seats      Seat[]
+  invoices   Invoice[]
+  usageRecords UsageRecord[]
+  taxIds     TaxId[]
+  paymentMethods PaymentMethod[]
+  notifications Notification[]
+}
+
+model Seat {
+  id          String        @id @default(cuid())
+  teamId      String
+  team        Team          @relation(fields: [teamId], references: [id])
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id])
+  email       String?
+  role        SeatRole      @default(MEMBER)
+  status      SeatStatus    @default(INVITED)
+  invitedAt   DateTime      @default(now())
+  acceptedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([teamId, status])
+  @@index([userId])
+}
+
+enum SeatRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum SeatStatus {
+  INVITED
+  ACTIVE
+  REMOVED
+}
+
+model Metric {
+  id         String   @id @default(cuid())
+  teamId     String
+  team       Team     @relation(fields: [teamId], references: [id])
+  key        String
+  value      Float
+  recordedAt DateTime @default(now())
+
+  @@index([teamId, key, recordedAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  slug        String       @unique
+  description String?
+  monthlyPrice Int         @default(0)
+  yearlyPrice  Int         @default(0)
+  currency     String      @default("usd")
+  trialDays    Int         @default(0)
+  sortOrder    Int         @default(0)
+  isActive     Boolean     @default(true)
+  isRecommended Boolean    @default(false)
+  features    PlanFeature[]
+  addOns      AddOn[]
+  usageLimits UsageLimit[]
+  subscriptions  Subscription[]
+  subscriptionItems SubscriptionItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model PlanFeature {
+  id        String @id @default(cuid())
+  planId    String
+  plan      Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature   String
+  included  Boolean @default(true)
+  value     String?
+  sortOrder Int     @default(0)
+
+  @@index([planId, sortOrder])
+}
+
+model AddOn {
+  id          String   @id @default(cuid())
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Int
+  currency    String   @default("usd")
+  type        AddOnType @default(FLAT)
+  stripePriceId String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([planId])
+}
+
+enum AddOnType {
+  FLAT
+  PER_UNIT
+}
+
+model UsageLimit {
+  id          String  @id @default(cuid())
+  planId      String
+  plan        Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  metric      String
+  limit       Float
+  overagePrice Float  @default(0)
+  overageCurrency String @default("usd")
+  isHardLimit Boolean @default(false)
+  description String?
+
+  @@index([planId, metric])
+}
+
+model Customer {
+  id               String         @id @default(cuid())
+  teamId           String         @unique
+  team             Team           @relation(fields: [teamId], references: [id])
+  stripeCustomerId String         @unique
+  email            String?
+  name             String?
+  phone            String?
+  address          Json?
+  taxExempt        String         @default("none")
+  currency         String         @default("usd")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  subscriptions    Subscription[]
+  paymentMethods   PaymentMethod[]
+  invoices         Invoice[]
+}
+
+model Subscription {
+  id                   String              @id @default(cuid())
+  customerId           String
+  customer             Customer            @relation(fields: [customerId], references: [id])
+  stripeSubscriptionId String              @unique
+  planId               String?
+  plan                 Plan?               @relation(fields: [planId], references: [id])
+  status               SubscriptionStatus  @default(TRIALING)
+  billing              BillingCycle        @default(MONTHLY)
+  quantity             Int                 @default(1)
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  canceledAt           DateTime?
+  endedAt              DateTime?
+  pauseCollection      Boolean             @default(false)
+  pauseResumesAt       DateTime?
+  defaultPaymentMethod String?
+  stripeLatestInvoice  String?
+  metadata             Json?
+  items                SubscriptionItem[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([planId])
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  PAUSED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+model SubscriptionItem {
+  id              String       @id @default(cuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  stripePriceId   String
+  stripeProductId String?
+  planId          String?
+  plan            Plan?        @relation(fields: [planId], references: [id])
+  quantity        Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([subscriptionId])
+  @@index([stripePriceId])
+}
+
+model UsageRecord {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+  metric    String
+  amount    Float
+  stripeUsageRecordId String?
+  recordedAt DateTime @default(now())
+  metadata  Json?
+
+  @@index([teamId, metric, recordedAt])
+  @@index([teamId, recordedAt])
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  teamId           String
+  team             Team          @relation(fields: [teamId], references: [id])
+  customerId       String?
+  customer         Customer?     @relation(fields: [customerId], references: [id])
+  stripeInvoiceId  String        @unique
+  number           String?
+  amountDue        Int
+  amountPaid       Int           @default(0)
+  amountRemaining  Int           @default(0)
+  currency         String        @default("usd")
+  status           InvoiceStatus @default(PENDING)
+  description      String?
+  pdfUrl           String?
+  hostedUrl        String?
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  paidAt           DateTime?
+  tax              Int           @default(0)
+  subtotal         Int           @default(0)
+  total            Int           @default(0)
+  metadata         Json?
+  taxRecords       TaxRecord[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([teamId, status])
+  @@index([teamId, createdAt])
+  @@index([stripeInvoiceId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PENDING
+  PAID
+  UNCOLLECTIBLE
+  VOID
+  DELETED
+  MARKED_UNCOLLECTIBLE
+}
+
+model PaymentMethod {
+  id                    String           @id @default(cuid())
+  teamId                String
+  team                  Team             @relation(fields: [teamId], references: [id])
+  customerId            String?
+  customer              Customer?        @relation(fields: [customerId], references: [id])
+  stripePaymentMethodId String           @unique
+  type                  String           @default("card")
+  brand                 String?
+  last4                 String?
+  expMonth              Int?
+  expYear               Int?
+  fingerprint           String?
+  isDefault             Boolean          @default(false)
+  billingDetails        Json?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([teamId, isDefault])
+  @@index([teamId])
+}
+
+model TaxRecord {
+  id        String   @id @default(cuid())
+  teamId    String
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Int
+  currency  String   @default("usd")
+  description String?
+  rate      Float?
+  type      String?
+  createdAt DateTime @default(now())
+
+  @@index([teamId])
+  @@index([invoiceId])
+}
+
+model TaxId {
+  id            String   @id @default(cuid())
+  teamId        String
+  team          Team     @relation(fields: [teamId], references: [id])
+  stripeTaxIdId String   @unique
+  type          String   @default("eu_vat")
+  value         String
+  country       String?
+  isVerified    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  key        String    @unique
+  scopes     String    @default("read")
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([key])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  teamId     String?
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+model EventLog {
+  id          String    @id @default(cuid())
+  event       String
+  payload     Json?
+  status      String    @default("pending")
+  error       String?
+  retries     Int       @default(0)
+  maxRetries  Int       @default(3)
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  teamId    String?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  type      String   @default("info")
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
+model BillingActivity {
+  id         String   @id @default(cuid())
+  teamId     String
+  action     String
+  description String?
+  amount     Int?
+  currency   String?
+  status     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, createdAt])
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
